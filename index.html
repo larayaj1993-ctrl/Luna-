@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Luna</title>
+<style>
+  body{font-family:sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
+  #chat{flex:1;overflow:auto;padding:12px}
+  .m{margin:8px 0;padding:8px 12px;border-radius:12px;max-width:80%}
+  .luna{background:#eee}
+  .yo{background:#cfe8ff;margin-left:auto}
+  #barra{display:flex;gap:8px;padding:8px}
+  #texto{flex:1;padding:10px}
+</style>
+</head>
+<body>
+<div id="chat"></div>
+<div id="barra">
+  <input id="texto" placeholder="Escríbele a Luna">
+  <button onclick="enviar()">Enviar</button>
+</div>
+<script>
+const chat=document.getElementById('chat');
+function agregar(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}
+agregar('Hola, soy Luna. ¿En qué le ayudo hoy?','luna');
+function enviar(){
+  const i=document.getElementById('texto');
+  if(!i.value.trim())return;
+  agregar(i.value,'yo');
+  agregar('Todavía no tengo cerebro, pero ya estoy aquí.','luna');
+  i.value='';
+}
+</script>
+</body>
+</html>
