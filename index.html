@@ -6,6 +6,9 @@
 <title>Luna</title>
 <style>
   body{font-family:sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
+  #top{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid #ccc}
+  #panel{display:none;padding:8px 12px;border-bottom:1px solid #ccc;overflow:auto;max-height:55vh}
+  #panel textarea{width:100%;box-sizing:border-box;font-size:15px;margin:4px 0 8px}
   #chat{flex:1;overflow:auto;padding:12px}
   .m{margin:8px 0;padding:8px 12px;border-radius:12px;max-width:80%;white-space:pre-wrap}
   .luna{background:#eee;color:#000}
@@ -16,17 +19,35 @@
 </style>
 </head>
 <body>
+<div id="top"><strong>Luna</strong><button id="btnPerfil">Mi perfil</button></div>
+<div id="panel">
+  <label>Cuéntale a Luna sobre ti (objetivos, rutina, cómo quieres que te hable):</label>
+  <textarea id="perfilTxt" rows="6"></textarea>
+  <label>Lo que Luna recuerda (una cosa por línea, puedes borrar o editar):</label>
+  <textarea id="notasTxt" rows="5"></textarea>
+  <button id="btnGuardar">Guardar</button>
+</div>
 <div id="chat"></div>
 <div id="barra">
   <input id="texto" placeholder="Escríbele a Luna">
   <button id="btn">Enviar</button>
 </div>
 <script>
-const WORKER_URL = "https://luna-cerebro.l-arayaj1993.workers.dev/";
+const WORKER_URL = "PEGA_AQUI_TU_DIRECCION_WORKERS_DEV";
+
+const ls = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+};
+let historial = ls.get('luna_historial', []);
+let notas = ls.get('luna_notas', []);
+let perfil = ls.get('luna_perfil', '');
+
 const chat = document.getElementById('chat');
 const texto = document.getElementById('texto');
-let historial = [];
-try { historial = JSON.parse(localStorage.getItem('luna_historial') || '[]'); } catch (e) {}
+const panel = document.getElementById('panel');
+const perfilTxt = document.getElementById('perfilTxt');
+const notasTxt = document.getElementById('notasTxt');
 
 function agregar(t, c) {
   const d = document.createElement('div');
@@ -36,15 +57,31 @@ function agregar(t, c) {
   chat.scrollTop = chat.scrollHeight;
   return d;
 }
-function guardar() {
-  try { localStorage.setItem('luna_historial', JSON.stringify(historial.slice(-40))); } catch (e) {}
+
+async function pedir(modo) {
+  const ahora = new Date().toLocaleString('es', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const r = await fetch(WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mensajes: historial.slice(-20), perfil, notas, modo, ahora })
+  });
+  const d = await r.json();
+  return d.texto || 'No pude responder ahora.';
 }
 
-if (historial.length === 0) {
-  agregar('Hola, soy Luna. ¿En qué te ayudo hoy?', 'luna');
-} else {
-  historial.forEach(m => agregar(m.texto, m.rol));
+function procesar(t) {
+  const re = /\[\[RECORDAR:\s*(.*?)\]\]/g;
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const n = m[1].trim();
+    if (n && !notas.includes(n)) notas.push(n);
+  }
+  notas = notas.slice(-30);
+  ls.set('luna_notas', notas);
+  return t.replace(re, '').trim();
 }
+
+function guardarHistorial() { ls.set('luna_historial', historial.slice(-40)); }
 
 async function enviar() {
   const t = texto.value.trim();
@@ -54,21 +91,48 @@ async function enviar() {
   historial.push({ rol: 'yo', texto: t });
   const espera = agregar('Luna está pensando...', 'luna');
   try {
-    const r = await fetch(WORKER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mensajes: historial })
-    });
-    const d = await r.json();
-    espera.textContent = d.texto;
-    historial.push({ rol: 'luna', texto: d.texto });
+    const limpio = procesar(await pedir('chat'));
+    espera.textContent = limpio;
+    historial.push({ rol: 'luna', texto: limpio });
   } catch (e) {
     espera.textContent = 'No pude conectarme. Intenta de nuevo.';
   }
-  guardar();
+  guardarHistorial();
 }
+
+async function saludar() {
+  const ultimo = ls.get('luna_ultimo_saludo', 0);
+  const tresHoras = 3 * 60 * 60 * 1000;
+  if (Date.now() - ultimo < tresHoras) return;
+  ls.set('luna_ultimo_saludo', Date.now());
+  const espera = agregar('Luna está pensando...', 'luna');
+  try {
+    const limpio = procesar(await pedir('saludo'));
+    espera.textContent = limpio;
+    historial.push({ rol: 'luna', texto: limpio });
+  } catch (e) {
+    espera.textContent = 'Hola, soy Luna. No pude conectarme ahora, pero aquí estoy.';
+  }
+  guardarHistorial();
+}
+
+document.getElementById('btnPerfil').onclick = () => {
+  perfilTxt.value = perfil;
+  notasTxt.value = notas.join('\n');
+  panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
+};
+document.getElementById('btnGuardar').onclick = () => {
+  perfil = perfilTxt.value.trim().slice(0, 2000);
+  notas = notasTxt.value.split('\n').map(s => s.trim()).filter(Boolean).slice(-30);
+  ls.set('luna_perfil', perfil);
+  ls.set('luna_notas', notas);
+  panel.style.display = 'none';
+};
 document.getElementById('btn').onclick = enviar;
 texto.addEventListener('keydown', e => { if (e.key === 'Enter') enviar(); });
+
+historial.forEach(m => agregar(m.texto, m.rol));
+saludar();
 </script>
 </body>
 </html>
