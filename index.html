@@ -7,30 +7,68 @@
 <style>
   body{font-family:sans-serif;margin:0;display:flex;flex-direction:column;height:100vh}
   #chat{flex:1;overflow:auto;padding:12px}
-  .m{margin:8px 0;padding:8px 12px;border-radius:12px;max-width:80%}
-  .luna{background:#eee}
-  .yo{background:#cfe8ff;margin-left:auto}
+  .m{margin:8px 0;padding:8px 12px;border-radius:12px;max-width:80%;white-space:pre-wrap}
+  .luna{background:#eee;color:#000}
+  .yo{background:#cfe8ff;color:#000;margin-left:auto}
   #barra{display:flex;gap:8px;padding:8px}
-  #texto{flex:1;padding:10px}
+  #texto{flex:1;padding:10px;font-size:16px}
+  button{padding:10px 14px}
 </style>
 </head>
 <body>
 <div id="chat"></div>
 <div id="barra">
   <input id="texto" placeholder="Escríbele a Luna">
-  <button onclick="enviar()">Enviar</button>
+  <button id="btn">Enviar</button>
 </div>
 <script>
-const chat=document.getElementById('chat');
-function agregar(t,c){const d=document.createElement('div');d.className='m '+c;d.textContent=t;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}
-agregar('Hola, soy Luna. ¿En qué le ayudo hoy?','luna');
-function enviar(){
-  const i=document.getElementById('texto');
-  if(!i.value.trim())return;
-  agregar(i.value,'yo');
-  agregar('Todavía no tengo cerebro, pero ya estoy aquí.','luna');
-  i.value='';
+const WORKER_URL = https://luna-cerebro.TUNOMBRE.workers.dev;
+const chat = document.getElementById('chat');
+const texto = document.getElementById('texto');
+let historial = [];
+try { historial = JSON.parse(localStorage.getItem('luna_historial') || '[]'); } catch (e) {}
+
+function agregar(t, c) {
+  const d = document.createElement('div');
+  d.className = 'm ' + c;
+  d.textContent = t;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
 }
+function guardar() {
+  try { localStorage.setItem('luna_historial', JSON.stringify(historial.slice(-40))); } catch (e) {}
+}
+
+if (historial.length === 0) {
+  agregar('Hola, soy Luna. ¿En qué te ayudo hoy?', 'luna');
+} else {
+  historial.forEach(m => agregar(m.texto, m.rol));
+}
+
+async function enviar() {
+  const t = texto.value.trim();
+  if (!t) return;
+  texto.value = '';
+  agregar(t, 'yo');
+  historial.push({ rol: 'yo', texto: t });
+  const espera = agregar('Luna está pensando...', 'luna');
+  try {
+    const r = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensajes: historial })
+    });
+    const d = await r.json();
+    espera.textContent = d.texto;
+    historial.push({ rol: 'luna', texto: d.texto });
+  } catch (e) {
+    espera.textContent = 'No pude conectarme. Intenta de nuevo.';
+  }
+  guardar();
+}
+document.getElementById('btn').onclick = enviar;
+texto.addEventListener('keydown', e => { if (e.key === 'Enter') enviar(); });
 </script>
 </body>
 </html>
